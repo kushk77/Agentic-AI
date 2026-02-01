@@ -1,23 +1,38 @@
-print("Chatbot file started")
+print("Chatbot started")
 
 from dotenv import load_dotenv
 load_dotenv()
 
 from langchain_groq import ChatGroq
 from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
-# LLM
+
+# 1. Model
+
 llm = ChatGroq(
     model="llama-3.1-8b-instant",
-    temperature=0.5
+    temperature=0.7
 )
 
-# Web search tool
+
+# 2. Internet Tool
+
 search_tool = TavilySearchResults(max_results=3)
 
-print("🤖 Agentic AI Chatbot with Internet is running!")
-print("Type 'exit' to quit.\n")
+print("🤖 ChatGPT-style AI Assistant is running!")
+print("Ask me anything. Type 'exit' to quit.\n")
+
+
+# 3. Conversation Memory
+
+chat_history = [
+    SystemMessage(
+        content="You are a helpful, friendly, all-purpose AI assistant like ChatGPT."
+    )
+]
+
+# 4. Chat Loop
 
 while True:
     user_input = input("You: ")
@@ -26,23 +41,42 @@ while True:
         print("👋 Goodbye!")
         break
 
-    # WEATHER LOGIC
-    if "weather" in user_input.lower() or "temperature" in user_input.lower():
-        search_result = search_tool.invoke(
-            {"query": f"current weather in {user_input}"}
+    chat_history.append(HumanMessage(content=user_input))
+
+
+    # 5. Decide if search is needed
+
+    router_prompt = f"""
+    Decide if this question needs real-time or factual information
+    (weather, news, prices, current events).
+    Answer only YES or NO.
+
+    Question: {user_input}
+    """
+
+    decision = llm.invoke(
+        [HumanMessage(content=router_prompt)]
+    ).content.strip().upper()
+
+
+    # 6. Use tools if needed
+
+    if decision == "YES":
+        search_result = search_tool.invoke({"query": user_input})
+
+        tool_context = SystemMessage(
+            content=f"Use the following live information to answer accurately:\n{search_result}"
         )
 
-        messages = [
-            HumanMessage(
-                content=(
-                    "Using the following live data, answer clearly in CELSIUS only.\n"
-                    f"{search_result}"
-                )
-            ),
-            HumanMessage(content=user_input)
-        ]
+        messages = chat_history + [tool_context]
+
     else:
-        messages = [HumanMessage(content=user_input)]
+        messages = chat_history
+
+
+    # 7. Get response
 
     response = llm.invoke(messages)
     print("Bot:", response.content)
+
+    chat_history.append(AIMessage(content=response.content))
